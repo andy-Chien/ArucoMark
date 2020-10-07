@@ -46,7 +46,7 @@ class MarkerPosture():
         self.tvecs_arr = np.zeros((100, 3, NUMBER))
 
         # cam = cv2.VideoCapture('gridboardiphonetest.mp4')
-        self.cam = cv2.VideoCapture(4)
+        self.cam = cv2.VideoCapture(2)
 
     def findMarker(self):
         self.rvecs_arr = np.zeros((100, 3, NUMBER))
