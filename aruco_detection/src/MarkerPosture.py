@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # The following code is used to watch a video stream, detect Aruco markers, and use
 # a set of markers to determine the posture of the camera in relation to the plane
 # of markers.
@@ -7,11 +9,14 @@
 # Requires camera calibration (see the rest of the project for example calibration)
 
 import rospy
+import std_msgs, std_srvs
 import numpy as np
 import cv2
 import cv2.aruco as aruco
 import os
 import pickle
+from aruco_detection.srv import aruco_info, aruco_infoResponse
+import time
 
 NUMBER = 50
 # Constant parameters used in Aruco methods
@@ -19,18 +24,28 @@ ARUCO_PARAMETERS = aruco.DetectorParameters_create()
 ARUCO_DICT = aruco.Dictionary_get(aruco.DICT_4X4_100)
 
 class MarkerPosture():
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
+        self.cnd = 0
         # Check for camera calibration data
-        if not os.path.exists('./calibration.pckl'):
+        if not os.path.exists('/home/iclab/aruco_ws/src/aruco_detection/cfg/calibration.pckl'):
             print("You need to calibrate the camera you'll be using. See calibration project directory for details.")
-            exit()
+            self.cameraMatrix = [[603.00869939,   0.0,          318.46049727],
+                                 [0.0,            601.50770586, 251.87010006],
+                                 [0.0,            0.0,          1.0         ]]
+            self.distCoeffs = [[7.59282092e-02,  2.21483627e-01,  1.41152268e-03, -4.71388619e-04, -1.18482976e+00]]
+
+            #exit()
         else:
-            f = open('calibration.pckl', 'rb')
+            f = open('/home/iclab/aruco_ws/src/aruco_detection/cfg/calibration.pckl', 'rb')
             (self.cameraMatrix, self.distCoeffs, _, _) = pickle.load(f)
             f.close()
             if self.cameraMatrix is None or self.distCoeffs is None:
                 print("Calibration issue. Remove ./calibration.pckl and recalibrate your camera with CalibrateCamera.py.")
                 exit()
+            print(self.cameraMatrix)
+            print('               ')
+            print(self.distCoeffs)
 
         # Create grid board object we're using in our stream
         # board = aruco.GridBoard_create(
@@ -45,20 +60,33 @@ class MarkerPosture():
         self.tvecs = None
         self.rvecs_arr = np.zeros((100, 3, NUMBER))
         self.tvecs_arr = np.zeros((100, 3, NUMBER))
-
         # cam = cv2.VideoCapture('gridboardiphonetest.mp4')
-        self.cam = cv2.VideoCapture(2)
+        self.cam_left = cv2.VideoCapture(4)
+        self.cam_right = cv2.VideoCapture(10)
+        self.cam = None
+        self.QueryImg = None
+        self.init_server()
 
-    def findMarker(self):
+    def init_server(self):
+        self.server = rospy.Service('get_ar_marker', aruco_info, self.findMarker)
+
+    def findMarker(self, req):
+        print(req.cmd)
+        if req.cmd == 'left':
+            self.cam = self.cam_left
+        else:
+            self.cam = self.cam_right
         self.rvecs_arr = np.zeros((100, 3, NUMBER))
         self.tvecs_arr = np.zeros((100, 3, NUMBER))
-        QueryImg = None
+        res = aruco_infoResponse()
+
         for order in range (NUMBER):
             # Capturing each frame of our video stream
-            ret, QueryImg = self.cam.read()
-            if ret == True:
+            ret, self.QueryImg = self.cam.read()
+            if ret:
+
                 # grayscale image
-                gray = cv2.cvtColor(QueryImg, cv2.COLOR_BGR2GRAY)
+                gray = cv2.cvtColor(self.QueryImg, cv2.COLOR_BGR2GRAY)
 
                 # Detect Aruco markers
                 corners, ids, _ = aruco.detectMarkers(gray, ARUCO_DICT, parameters=ARUCO_PARAMETERS)
@@ -78,16 +106,13 @@ class MarkerPosture():
                 # TODO: Add validation here to reject IDs/corners not part of a gridboard #
                 ###########################################################################
 
-                # Outline all of the markers detected in our image
-                QueryImg = aruco.drawDetectedMarkers(QueryImg, corners, borderColor=(0, 0, 255))
-
                 # Require 15 markers before drawing axis
                 if ids is not None and len(ids) > 0:
                     # Estimate the posture of the gridboard, which is a construction of 3D space based on the 2D video 
                     #pose, rvec, tvec = aruco.estimatePoseBoard(corners, ids, board, self.cameraMatrix, self.distCoeffs)
                     #if pose:
                     #    # Draw the camera posture calculated from the gridboard
-                    #    QueryImg = aruco.drawAxis(QueryImg, self.cameraMatrix, self.distCoeffs, rvec, tvec, 0.3)
+                    #    self.QueryImg = aruco.drawAxis(self.QueryImg, self.cameraMatrix, self.distCoeffs, rvec, tvec, 0.3)
                     # Estimate the posture per each Aruco marker
                     self.rvecs, self.tvecs, _ = aruco.estimatePoseSingleMarkers(corners, 0.02, self.cameraMatrix, self.distCoeffs)           
                     for _id, rvec, tvec in zip(ids, self.rvecs, self.tvecs):
@@ -96,13 +121,12 @@ class MarkerPosture():
                             self.rvecs_arr[_id][i][order] = rvec[0][i]
                             self.tvecs_arr[_id][i][order] = tvec[0][i]
                         
-                    #     QueryImg = aruco.drawAxis(QueryImg, self.cameraMatrix, self.distCoeffs, rvec, tvec, 0.02)
-
+                    #     self.QueryImg = aruco.drawAxis(self.QueryImg, self.cameraMatrix, self.distCoeffs, rvec, tvec, 0.02)
+                cv2.waitKey(10)
                 # Display our image
-                # cv2.imshow('QueryImage', QueryImg)
-            cv2.waitKey(1)
         # print('self.rvecs_arr = ', self.rvecs_arr)
         # print('self.tvecs_arr = ', self.tvecs_arr)
+        cv2.destroyAllWindows()
         result = np.array(())
         r_avg = np.zeros(3) 
         t_avg = np.zeros(3)
@@ -151,25 +175,65 @@ class MarkerPosture():
             if ctn:
                 continue
             # print('[_id, r,t] = ', [_id, r,t])
+            res.ids.append(_id)
+            res.rvecs = np.append(res.rvecs, r_avg)
+            res.tvecs = np.append(res.tvecs, t_avg)
             result = np.append(result, [_id, np.copy(r_avg), np.copy(t_avg)])
         
         result = result.reshape(int(len(result)/3),3)
-        # print(result)
-        for rst in result:
-            QueryImg = aruco.drawAxis(QueryImg, self.cameraMatrix, self.distCoeffs, rst[1], rst[2], 0.02)
-        cv2.imshow('QueryImage', QueryImg)
-        return result
+
+        if self.name == 'test':
+            for rst in result:
+                # Outline all of the markers detected in our image
+                self.QueryImg = aruco.drawDetectedMarkers(self.QueryImg, corners, borderColor=(0, 0, 255))
+                self.QueryImg = aruco.drawAxis(self.QueryImg, self.cameraMatrix, self.distCoeffs, rst[1], rst[2], 0.02)
+                print('ffffffuck')
+            
+            # cv2.imwrite('./123%d.jpg'%self.cnd, self.QueryImg)
+            # self.cnd += 1
+            # cv2.namedWindow('Amanda', cv2.WINDOW_AUTOSIZE)
+            # self.QueryImg = cv2.imread('./123%d.jpg'%self.cnd)
+            # cv2.imshow('Amanda', self.QueryImg)
+            # cv2.waitKey(1000)
+            # cv2.destroyAllWindows()
+
+            # time.sleep(2)
+            print('------')
+            # while not cv2.waitKey(1) & 0xFF == ord('q'):
+            #     pass
+            # cv2.destroyAllWindows()
+        return res
             
 if __name__ == '__main__':
     rospy.init_node('aruco')
-    mp = MarkerPosture()
-    while True:
-        result = mp.findMarker()
-        print(result)
-        print(cv2.Rodrigues(result[0][1])[0])
-        # print('==========================')
-        if cv2.waitKey(0) & 0xFF == ord('q'):
-            break
+    is_show = True
+    name = 'test'
+
+    if rospy.has_param('is_show'):
+        is_show = rospy.get_param('is_show')
+    if is_show == False:
+        name = 'fuck_run'
+
+    mp = MarkerPosture(name)
+    if mp.name == 'test':
+        while mp.QueryImg is None:
+            time.sleep(0.1)
+        while not rospy.is_shutdown():
+            cv2.imshow('Amanda', mp.QueryImg)
+            cv2.waitKey(10)
+    rospy.spin()
+    cv2.destroyAllWindows()
+    del mp
+    # while True:
+    #     result = mp.findMarker()
+    #     print(result)
+    #     print(cv2.Rodrigues(result[0][1])[0])
+    #     # print('==========================')
+    #     if cv2.waitKey(0) & 0xFF == ord('q'):
+    #         break
+
+    
+    
 
         
 
