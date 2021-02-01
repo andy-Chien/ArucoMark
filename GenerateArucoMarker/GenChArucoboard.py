@@ -8,7 +8,7 @@ gridboard = aruco.CharucoBoard_create(
         squaresX=5, 
         squaresY=7, 
         squareLength=0.04, 
-        markerLength=0.02, 
+        markerLength=0.027, 
         dictionary=aruco.Dictionary_get(aruco.DICT_4X4_100))
 
 # Create an image from the gridboard
