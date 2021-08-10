@@ -1,11 +1,12 @@
 import pyrealsense2 as rs
 import numpy as np
 import cv2
-
+X = 1920
+Y = 1080
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
+config.enable_stream(rs.stream.color, X, Y, rs.format.bgr8, 30)
 
 pipeline.start(config)
 
@@ -29,14 +30,18 @@ while(True):
     # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # Display the resulting frame
-    cv2.imshow('frame',color_image)
+    show_image = cv2.resize(color_image, (X/2, Y/2))                # Resize image
+    cv2.imshow('frame',show_image)
 
-    if cv2.waitKey(1) & 0xFF == ord('t'):
-        filename = "./pic_1920_1080_big/camera-pic-of-charucoboard-" +  str(int(frameId)) + ".jpg"
+    key = cv2.waitKey(10)
+
+    if key & 0xFF == ord('t'):
+        filename = "./pic/camera-pic-of-charucoboard-" +  str(int(frameId)) + ".jpg"
         cv2.imwrite(filename, color_image)
         frameId += 1
+        cv2.waitKey(100)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if key & 0xFF == ord('q'):
         break
 
 # When everything done, release the capture

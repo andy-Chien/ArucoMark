@@ -10,16 +10,16 @@ import glob
 
 
 # ChAruco board variables
-CHARUCOBOARD_ROWCOUNT = 16	
-CHARUCOBOARD_COLCOUNT = 12
+CHARUCOBOARD_ROWCOUNT = 7	
+CHARUCOBOARD_COLCOUNT = 5
 ARUCO_DICT = aruco.Dictionary_get(aruco.DICT_4X4_100)
 
 # Create constants to be passed into OpenCV and Aruco methods
 CHARUCO_BOARD = aruco.CharucoBoard_create(
         squaresX=CHARUCOBOARD_COLCOUNT,
         squaresY=CHARUCOBOARD_ROWCOUNT,
-        squareLength=0.0244,
-        markerLength=0.0122,
+        squareLength=0.0361,
+        markerLength=0.0244,
         dictionary=ARUCO_DICT)
 
 # Create the arrays and variables we'll use to store info like corners and IDs from images processed
@@ -32,7 +32,7 @@ image_size = None # Determined at runtime
 # I'm using a set of images taken with the camera with the naming convention:
 # 'camera-pic-of-charucoboard-<NUMBER>.jpg'
 # All images used should be the same size, which if taken with the same camera shouldn't be a problem
-images = glob.glob('./pic_1920_1080_big/camera-pic-of-charucoboard-*.jpg')
+images = glob.glob('./pic_8/camera-pic-of-charucoboard-*.jpg')
 
 # Loop through images glob'ed
 for iname in images:
